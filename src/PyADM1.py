@@ -682,8 +682,8 @@ for u in t[1:]:
     q_ch4 = 0
 
   flowtemp = {'q_gas' : q_gas, 'q_ch4' : q_ch4}
-  gasflow = gasflow.append(flowtemp, ignore_index=True)
-
+  flowtemp_df = pd.DataFrame([flowtemp])
+  gasflow = pd.concat([gasflow, flowtemp_df], ignore_index=True)
   S_nh4_ion =  (S_IN - S_nh3)
   S_co2 =  (S_IC - S_hco3_ion)
   total_ch4 = total_ch4 + q_ch4 
@@ -693,7 +693,7 @@ for u in t[1:]:
   state_zero = [S_su, S_aa, S_fa, S_va, S_bu, S_pro, S_ac, S_h2, S_ch4, S_IC, S_IN, S_I, X_xc, X_ch, X_pr, X_li, X_su, X_aa, X_fa, X_c4, X_pro, X_ac, X_h2, X_I, S_cation, S_anion, S_H_ion, S_va_ion, S_bu_ion, S_pro_ion, S_ac_ion, S_hco3_ion, S_co2, S_nh3, S_nh4_ion, S_gas_h2, S_gas_ch4, S_gas_co2]
   
   dfstate_zero = pd.DataFrame([state_zero], columns = columns)
-  simulate_results = simulate_results.append(dfstate_zero)
+  simulate_results = pd.concat([simulate_results, dfstate_zero], ignore_index=True)
   t0 = u
       
 
