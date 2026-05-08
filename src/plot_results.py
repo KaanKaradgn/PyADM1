@@ -65,7 +65,6 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                 width: 100%; height: 100%; background: var(--card-bg); backdrop-filter: var(--ios-blur); -webkit-backdrop-filter: var(--ios-blur);
                 border-radius: 30px; border: var(--border); box-shadow: 0 8px 25px rgba(0,0,0,0.04); padding: 25px; 
                 display: flex; flex-direction: column; position: absolute; top: 0; left: 0; z-index: 1;
-                /* Pürüzsüz sünme animasyonu devrede */
                 transition: all 0.5s var(--ios-curve), box-shadow 0.5s var(--ios-curve);
             }
             .card:hover:not(.expanded) { transform: scale(1.02); box-shadow: 0 15px 40px rgba(0,0,0,0.08); }
@@ -93,14 +92,19 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
             
             .chart-container { position: relative; width: 100%; flex-grow: 1; min-height: 0; height: 100%; }
             
-            /* İç pencerenin bluru (diğer grafikleri gizlemek için) */
             #overlay { 
                 position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                background: rgba(255, 255, 255, 0.4); 
-                backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); 
+                background: transparent; 
                 z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; 
             }
             #overlay.active { opacity: 1; pointer-events: all; }
+
+            /* HAYALET KUTULARI GİZLEME MANTIĞI */
+            body.is-expanded-mode .card-placeholder .card:not(.expanded) {
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transition: opacity 0.3s ease;
+            }
         </style>
     </head>
     <body>
@@ -130,14 +134,14 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                 try {
                     const parentDoc = window.parent.document;
                     
-                    // 1. Önceki hataya sebep olan stApp blurunu zorla temizle (Grafiği kör olmaktan kurtarır)
+                    // Ana sayfadaki stApp blurunu zorla temizle
                     const mainContainer = parentDoc.querySelector('.stApp');
                     if(mainContainer) {
                         mainContainer.classList.remove('main-blur');
                         mainContainer.style.filter = 'none'; 
                     }
                     
-                    // 2. ANA SAYFA İÇİN BAĞIMSIZ BUĞULU CAM OLUŞTUR (Grafiğin arkasına geçer)
+                    // KUSURSUZ ARKA PLAN BUĞUSU
                     let blurOverlay = parentDoc.getElementById('global-streamlit-blur');
                     if (!blurOverlay) {
                         blurOverlay = parentDoc.createElement('div');
@@ -150,7 +154,7 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                         blurOverlay.style.background = 'rgba(255, 255, 255, 0.2)';
                         blurOverlay.style.backdropFilter = 'blur(15px)';
                         blurOverlay.style.webkitBackdropFilter = 'blur(15px)';
-                        blurOverlay.style.zIndex = '999990'; // Ana sayfanın üstü
+                        blurOverlay.style.zIndex = '999990';
                         blurOverlay.style.opacity = '0';
                         blurOverlay.style.transition = 'opacity 0.5s ease';
                         parentDoc.body.appendChild(blurOverlay);
@@ -159,10 +163,11 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                     void blurOverlay.offsetWidth;
                     blurOverlay.style.opacity = '1';
                     
-                    // 3. İFRAME'İ (GRAFİĞİ) BUĞULU CAMIN BİR TIK ÜSTÜNE ÇIKART!
                     if (window.frameElement) {
                         window.frameElement.style.position = 'relative';
-                        window.frameElement.style.zIndex = '999995'; // 999990'dan daha yüksek!
+                        window.frameElement.style.zIndex = '999995'; 
+                        window.frameElement.style.background = 'transparent'; // Varsayılan Streamlit arkaplanını ezer
+                        window.frameElement.style.border = 'none';
                     }
                     
                     window.parent.addEventListener('wheel', preventScroll, { passive: false });
@@ -175,7 +180,6 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                 try {
                     const parentDoc = window.parent.document;
                     
-                    // Ana sayfa buğulu camını kaldır
                     let blurOverlay = parentDoc.getElementById('global-streamlit-blur');
                     if (blurOverlay) {
                         blurOverlay.style.opacity = '0';
@@ -184,7 +188,6 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                         }, 500);
                     }
                     
-                    // Grafiği eski sırasına geri indir
                     if (window.frameElement) {
                         window.frameElement.style.zIndex = '1';
                         setTimeout(() => { window.frameElement.style.position = ''; }, 500);
@@ -241,10 +244,12 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                 Object.values(charts).forEach(c => { c.resize(); c.update('none'); });
             }
             
-            // PIKSEL BAZLI SÜNME ANİMASYONU
             function expandCard(btn) {
                 const card = btn.closest('.card'); 
                 const rect = card.getBoundingClientRect();
+                
+                // Diğer grafikleri görünmez yap
+                document.body.classList.add('is-expanded-mode');
                 
                 lockParentScroll();
                 
@@ -300,6 +305,9 @@ def get_dashboard_html(df, manure_name="Seçilen Gübre"):
                 
                 document.getElementById('overlay').classList.remove('active'); 
                 card.classList.remove('expanded');
+                
+                // Diğer grafikleri görünür yap
+                document.body.classList.remove('is-expanded-mode');
                 
                 unlockParentScroll();
                 

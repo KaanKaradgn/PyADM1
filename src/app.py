@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- ÖZEL CSS STİLİ (Likit Cam / iOS Tarzı ve Dengeli Animasyonlar) ---
+# --- ÖZEL CSS STİLİ
 st.markdown("""
 <style>
     /* Arka Plan ve Temel Renkler */
@@ -192,6 +192,22 @@ st.markdown("""
         color: #AF52DE !important; /* Vurgulu mor yazı */
         border-color: rgba(175, 82, 222, 0.4) !important;
         background: rgba(255, 255, 255, 0.7) !important;
+    }
+
+    /* ========================================= */
+    /* HAYALET KATMANLARI VE TOOLBARLARI GİZLEME */
+    /* ========================================= */
+    iframe {
+        background: transparent !important;
+        border: none !important;
+    }
+    [data-testid="stIFrame"] {
+        background: transparent !important;
+        border: none !important;
+    }
+    /* "st.iframe" yazan sinir bozucu araç çubuğunu yok eder */
+    [data-testid="stElementToolbar"] {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
