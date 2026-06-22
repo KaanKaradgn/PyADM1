@@ -279,7 +279,7 @@ def run_adm1_simulation(influent_df, initial_df, load_factor=1.0, V_liq=3400.0):
             if abs(f) < tol: break
             it += 1
         y[26] = max(sh, 1e-12)
-        y[30], y[31], y[33] = K_a_ac*y[6]/(K_a_ac+sh), K_a_co2_d*y[9]/(K_a_co2_d+sh), K_a_IN_d*y[10]/(K_a_IN+sh)
+        y[30], y[31], y[33] = K_a_ac*y[6]/(K_a_ac+sh), K_a_co2_d*y[9]/(K_a_co2_d+sh), K_a_IN_d*y[10]/(K_a_IN_d+sh)
         return y
 
     # --- 6. MAIN RUN LOOP ---
