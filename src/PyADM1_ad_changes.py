@@ -5,7 +5,6 @@ import pandas as pd
 def get_ctm_multiplier(T, T_min=15.0, T_opt=37.0, T_max=44.0, T_ref=35.0):
     """
     Calculates Cardinal Temperature Model multiplier normalized to 35C.
-    Ensures that when T=35, the multiplier is exactly 1.0.
     """
     if T <= T_min or T >= T_max:
         return 0.0
