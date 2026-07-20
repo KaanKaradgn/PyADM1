@@ -160,7 +160,7 @@ def ADM1_ODE(t, state_zero):
 
   Rho_T_8 =  (k_L_a * (S_h2 - 16 * K_H_h2_d * p_gas_h2))
   Rho_T_9 =  (k_L_a * (S_ch4 - 64 * K_H_ch4_d * p_gas_ch4))
-  Rho_T_10 =  (k_L_a * (S_co2_state - K_H_co2_d * p_gas_co2))
+  Rho_T_10 =  (k_L_a * (S_co2 - K_H_co2_d * p_gas_co2))
 
   # HRT Calculation within differentials using global q_ad_dynamic
   diff_S_su = q_ad_dynamic / V_liq * (S_su_in - S_su) + Rho_2 + (1 - f_fa_li) * Rho_4 - Rho_5 
@@ -227,7 +227,7 @@ def simulate(t_step, state_zero, solvermethod):
 
 def DAESolve(S_va, S_bu, S_pro, S_ac, S_IC, S_IN, S_cation, S_anion, S_fa, S_h2_in, T_curr):
   global S_va_ion, S_bu_ion, S_pro_ion, S_ac_ion, S_hco3_ion, S_nh3, S_H_ion, pH, p_gas_h2, S_h2, S_nh4_ion, S_co2, P_gas, q_gas
-  global K_a_va, K_a_bu, K_a_pro, K_a_ac, K_a_co2, K_a_IN, K_w, K_pH_aa, nn_aa, K_pH_h2, n_h2, K_S_IN, K_I_h2_fa, K_I_h2_c4, K_I_h2_pro, k_m_su, K_S_su, X_su, k_m_aa, K_S_aa, X_aa, k_m_fa, K_S_fa, X_fa, k_m_c4, K_S_c4, X_c4, k_m_pro, K_S_pro, X_pro, k_m_h2, K_S_h2, X_h2, R, S_gas_h2, k_L_a, K_H_h2, q_ad, V_liq, Y_su, f_h2_su, Y_aa, f_h2_aa, Y_fa, Y_c4, Y_pro
+  global K_a_va, K_a_bu, K_a_pro, K_a_ac, K_a_co2, K_a_IN, K_w, K_pH_aa, nn_aa, K_pH_h2, n_h2, K_S_IN, K_I_h2_fa, K_I_h2_c4, K_I_h2_pro, k_m_su, K_S_su, X_su, k_m_aa, K_S_aa, X_aa, k_m_fa, K_S_fa, X_fa, k_m_c4, K_S_c4, X_c4, k_m_pro, K_S_pro, X_pro, k_m_h2, K_S_h2, X_h2, R, S_gas_h2, k_L_a, K_H_h2, q_ad, q_ad_dynamic, V_liq, Y_su, f_h2_su, Y_aa, f_h2_aa, Y_fa, Y_c4, Y_pro, S_su, S_aa
   
   T_base = 298.15
   T_k = T_curr + 273.15
@@ -236,6 +236,7 @@ def DAESolve(S_va, S_bu, S_pro, S_ac, S_IC, S_IN, S_cation, S_anion, S_fa, S_h2_
   K_a_IN_d = 10**-9.25 * np.exp((51965/(100*R)) * (1/T_base - 1/T_k))
 
   eps = 0.0000001
+  prevS_H_ion = S_H_ion
   shdelta = 1.0
   shgradeq = 1.0
   tol = 10 ** (-12) 
@@ -256,6 +257,54 @@ def DAESolve(S_va, S_bu, S_pro, S_ac, S_IC, S_IN, S_cation, S_anion, S_fa, S_h2_
         S_H_ion = tol
     i+=1
   pH = - np.log10(S_H_ion)
+
+  # --- HYDROGEN (S_h2) DAE SOLVER (dinamik sıcaklık ile tutarli) ---
+  alpha_T = get_ctm_multiplier(T_curr)
+  K_H_h2_d = 7.8 * 10 ** -4 * np.exp(-4180 / (100 * R) * (1 / T_base - 1 / T_k))
+
+  # Sicakliga gore olceklenmis kinetikler (ADM1_ODE ile ayni)
+  k_m_su_d = k_m_su * alpha_T
+  k_m_aa_d = k_m_aa * alpha_T
+  k_m_fa_d = k_m_fa * alpha_T
+  k_m_c4_d = k_m_c4 * alpha_T
+  k_m_pro_d = k_m_pro * alpha_T
+  k_m_h2_d = k_m_h2 * alpha_T
+
+  S_h2delta = 1.0
+  S_h2gradeq = 1.0
+  j = 1
+  while ((S_h2delta > tol or S_h2delta < -tol) and (j <= maxIter)):
+    I_pH_aa = (K_pH_aa ** nn_aa) / (prevS_H_ion ** nn_aa + K_pH_aa ** nn_aa)
+    I_pH_h2 = (K_pH_h2 ** n_h2) / (prevS_H_ion ** n_h2 + K_pH_h2 ** n_h2)
+    I_IN_lim = 1 / (1 + (K_S_IN / S_IN))
+    I_h2_fa = 1 / (1 + (S_h2 / K_I_h2_fa))
+    I_h2_c4 = 1 / (1 + (S_h2 / K_I_h2_c4))
+    I_h2_pro = 1 / (1 + (S_h2 / K_I_h2_pro))
+
+    I_5 = I_pH_aa * I_IN_lim
+    I_6 = I_5
+    I_7 = I_pH_aa * I_IN_lim * I_h2_fa
+    I_8 = I_pH_aa * I_IN_lim * I_h2_c4
+    I_9 = I_8
+    I_10 = I_pH_aa * I_IN_lim * I_h2_pro
+    I_12 = I_pH_h2 * I_IN_lim
+
+    Rho_5 = k_m_su_d * (S_su / (K_S_su + S_su)) * X_su * I_5
+    Rho_6 = k_m_aa_d * (S_aa / (K_S_aa + S_aa)) * X_aa * I_6
+    Rho_7 = k_m_fa_d * (S_fa / (K_S_fa + S_fa)) * X_fa * I_7
+    Rho_8 = k_m_c4_d * (S_va / (K_S_c4 + S_va)) * X_c4 * (S_va / (S_bu + S_va + 1e-6)) * I_8
+    Rho_9 = k_m_c4_d * (S_bu / (K_S_c4 + S_bu)) * X_c4 * (S_bu / (S_bu + S_va + 1e-6)) * I_9
+    Rho_10 = k_m_pro_d * (S_pro / (K_S_pro + S_pro)) * X_pro * I_10
+    Rho_12 = k_m_h2_d * (S_h2 / (K_S_h2 + S_h2)) * X_h2 * I_12
+    p_gas_h2 = S_gas_h2 * R * T_k / 16
+    Rho_T_8 = k_L_a * (S_h2 - 16 * K_H_h2_d * p_gas_h2)
+    S_h2delta = q_ad_dynamic / V_liq * (S_h2_in - S_h2) + (1 - Y_su) * f_h2_su * Rho_5 + (1 - Y_aa) * f_h2_aa * Rho_6 + (1 - Y_fa) * 0.3 * Rho_7 + (1 - Y_c4) * 0.15 * Rho_8 + (1 - Y_c4) * 0.2 * Rho_9 + (1 - Y_pro) * 0.43 * Rho_10 - Rho_12 - Rho_T_8
+    S_h2gradeq = - 1.0 / V_liq * q_ad_dynamic - 3.0 / 10.0 * (1 - Y_fa) * k_m_fa_d * S_fa / (K_S_fa + S_fa) * X_fa * I_pH_aa / (1 + K_S_IN / S_IN) / ((1 + S_h2 / K_I_h2_fa) * (1 + S_h2 / K_I_h2_fa)) / K_I_h2_fa - 3.0 / 20.0 * (1 - Y_c4) * k_m_c4_d * S_va * S_va / (K_S_c4 + S_va) * X_c4 / (S_bu + S_va + eps) * I_pH_aa / (1 + K_S_IN / S_IN) / ((1 + S_h2 / K_I_h2_c4) * (1 + S_h2 / K_I_h2_c4)) / K_I_h2_c4 - 1.0 / 5.0 * (1 - Y_c4) * k_m_c4_d * S_bu * S_bu / (K_S_c4 + S_bu) * X_c4 / (S_bu + S_va + eps) * I_pH_aa / (1 + K_S_IN / S_IN) / ((1 + S_h2 / K_I_h2_c4) * (1 + S_h2 / K_I_h2_c4)) / K_I_h2_c4 - 43.0 / 100.0 * (1 - Y_pro) * k_m_pro_d * S_pro / (K_S_pro + S_pro) * X_pro * I_pH_aa / (1 + K_S_IN / S_IN) / ((1 + S_h2 / K_I_h2_pro) * (1 + S_h2 / K_I_h2_pro)) / K_I_h2_pro - k_m_h2_d / (K_S_h2 + S_h2) * X_h2 * I_pH_h2 / (1 + K_S_IN / S_IN) + k_m_h2_d * S_h2 / ((K_S_h2 + S_h2) * (K_S_h2 + S_h2)) * X_h2 * I_pH_h2 / (1 + K_S_IN / S_IN) - k_L_a
+    S_h2 = S_h2 - S_h2delta / S_h2gradeq
+    if S_h2 <= 0:
+        S_h2 = tol
+    j += 1
+
   return S_H_ion
 
 def run_simulation(df_influent, df_initial, selected_params):
@@ -268,8 +317,23 @@ def run_simulation(df_influent, df_initial, selected_params):
     global K_w, K_a_va, K_a_bu, K_a_pro, K_a_ac, K_a_co2, K_a_IN, k_A_B_va, k_A_B_bu, k_A_B_pro, k_A_B_ac, k_A_B_co2, k_A_B_IN, p_gas_h2o, k_p, k_L_a, K_H_co2, K_H_ch4, K_H_h2
     global S_su, S_aa, S_fa, S_va, S_bu, S_pro, S_ac, S_h2, S_ch4, S_IC, S_IN, S_I, X_xc, X_ch, X_pr, X_li, X_su, X_aa, X_fa, X_c4, X_pro, X_ac, X_h2, X_I, S_cation, S_anion, S_H_ion, S_va_ion, S_bu_ion, S_pro_ion, S_ac_ion, S_hco3_ion, S_co2, S_nh3, S_nh4_ion, S_gas_h2, S_gas_ch4, S_gas_co2, pH
 
-    influent_state = df_influent
+    influent_state = df_influent.copy()
     initial_state = df_initial
+
+    # CSV kolon adi uyumlulugu: motor 'q_ad' ve 'temp' bekler.
+    # Eski/yuklenen dosyalarda bunlar 'Q' ve 'T (C)' olarak gelebilir.
+    if 'q_ad' not in influent_state.columns:
+        if 'Q' in influent_state.columns:
+            influent_state['q_ad'] = influent_state['Q']
+        else:
+            influent_state['q_ad'] = 178.4674  # sabit varsayilan debi
+    if 'temp' not in influent_state.columns:
+        for _tcol in ['T (C)', 'T(C)', 'T', 'temp_C', 'operating_temp']:
+            if _tcol in influent_state.columns:
+                influent_state['temp'] = influent_state[_tcol]
+                break
+        else:
+            influent_state['temp'] = 35.0  # sabit mezofilik varsayilan sicaklik
 
     R = 0.083145 
     T_base = 298.15 
@@ -342,7 +406,7 @@ def run_simulation(df_influent, df_initial, selected_params):
         
         S_su, S_aa, S_fa, S_va, S_bu, S_pro, S_ac, S_h2, S_ch4, S_IC, S_IN, S_I, X_xc, X_ch, X_pr, X_li, X_su, X_aa, X_fa, X_c4, X_pro, X_ac, X_h2, X_I, S_cation, S_anion, S_H_ion, S_va_ion, S_bu_ion, S_pro_ion, S_ac_ion, S_hco3_ion, S_co2, S_nh3, S_nh4_ion, S_gas_h2, S_gas_ch4, S_gas_co2 = [arr[-1] for arr in r_y]
         
-        S_H_ion = DAESolve(S_va, S_bu, S_pro, S_ac, S_IC, S_IN, S_cation, S_anion, S_fa, S_h2, T_step_curr)
+        S_H_ion = DAESolve(S_va, S_bu, S_pro, S_ac, S_IC, S_IN, S_cation, S_anion, S_fa, S_h2_in, T_step_curr)
 
         state_zero = [S_su, S_aa, S_fa, S_va, S_bu, S_pro, S_ac, S_h2, S_ch4, S_IC, S_IN, S_I, X_xc, X_ch, X_pr, X_li, X_su, X_aa, X_fa, X_c4, X_pro, X_ac, X_h2, X_I, S_cation, S_anion, S_H_ion, S_va_ion, S_bu_ion, S_pro_ion, S_ac_ion, S_hco3_ion, S_co2, S_nh3, S_nh4_ion, S_gas_h2, S_gas_ch4, S_gas_co2]
         

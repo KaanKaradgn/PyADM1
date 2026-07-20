@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
 
-# from PyADM1_2 import run_simulation 
+# from PyADM1_2_2 import run_simulation
 from plot_results import get_dashboard_html
 from manure_config import ADM1Simulator
 
@@ -243,11 +243,8 @@ with st.container():
     st.markdown('<div class="glass-container-anchor"></div>', unsafe_allow_html=True)
     st.markdown('<h3 class="box-title">Veri Dosyaları</h3>', unsafe_allow_html=True)
     
-    col_file1, col_file2 = st.columns(2)
-    with col_file1:
-        influent_file = st.file_uploader("Influent (Giriş) Verisi", type=["csv"])
-    with col_file2:
-        initial_file = st.file_uploader("Initial (Başlangıç) Verisi", type=["csv"])
+    st.markdown('<p style="color:#8E8E93; font-size:14px; margin-bottom:12px;">Influent kompozisyonu seçilen gübre türlerinden otomatik oluşturulur — ayrı influent dosyası gerekmez. İsterseniz reaktör başlangıç durumunu (initial) yükleyebilirsiniz; boş bırakırsanız varsayılan kullanılır.</p>', unsafe_allow_html=True)
+    initial_file = st.file_uploader("Reaktör Başlangıç Durumu (Initial) — opsiyonel", type=["csv"])
 
 # 2. Kutu: Simülasyon Ayarları
 with st.container():
@@ -255,6 +252,7 @@ with st.container():
     st.markdown('<h3 class="box-title">Simülasyon Ayarları</h3>', unsafe_allow_html=True)
     
     sim_type = st.radio("Simülasyon Modu:", ["Tek Tip", "Hibrit Karışım"], horizontal=True)
+    sim_days = st.slider("Simülasyon Süresi (gün)", min_value=30, max_value=280, value=150, step=10)
 
     if sim_type == "Tek Tip":
         secilen_gubre = st.selectbox("Gübre Türü Seçin:", gubre_tipleri)
@@ -281,40 +279,40 @@ btn_placeholder = st.empty()
 baslat_butonu = btn_placeholder.button("Simülasyonu Başlat", key="btn_start")
 
 if baslat_butonu:
-    if influent_file is None or initial_file is None:
-        st.error("Lütfen influent ve initial CSV dosyalarını yükleyin.")
-    elif sim_type == "Hibrit Karışım" and (not karisim_oranlari or sum(karisim_oranlari.values()) == 0):
-        st.error("Hibrit simülasyon için oranlar toplamı 0 olamaz.")
+    if sim_type == "Hibrit Karışım" and (not karisim_oranlari or sum(karisim_oranlari.values()) == 0):
+        st.error("Hibrit simülasyon için en az bir gübre seçip oran girmelisiniz.")
     else:
         # 1. AŞAMA: Tıklanınca Modelleniyor yazıp kilitlenir
         btn_placeholder.button("Modelleniyor... Lütfen bekleyin.", disabled=True, key="btn_loading")
-        
+
         try:
-            df_influent = pd.read_csv(influent_file)
-            df_initial = pd.read_csv(initial_file)
-            
+            # Influent kompozisyonu kütüphaneden gelir; initial opsiyonel (yoksa varsayılan)
+            df_initial = pd.read_csv(initial_file) if initial_file is not None else None
+
             if sim_type == "Tek Tip":
-                params = sim_manager.manure_data[secilen_gubre]
+                mix_dict = {secilen_gubre: 100}
             else:
-                params = sim_manager.create_hybrid_manure(karisim_oranlari)
-            
-            from PyADM1_2 import run_simulation
-            dynamic_out_df = run_simulation(df_influent, df_initial, params)
-            
-            html_kodu = get_dashboard_html(dynamic_out_df, params['name'])
+                mix_dict = karisim_oranlari
+
+            # Ko-digestion motoru: her substrat ayrı havuz (kinetik ortalaması YOK)
+            from codigest_runner import simulate_mixture
+            dynamic_out_df, feedstocks, mix_name = simulate_mixture(
+                mix_dict, df_initial=df_initial, sim_days=sim_days)
+
+            html_kodu = get_dashboard_html(dynamic_out_df, mix_name)
             components.html(html_kodu, height=1050, scrolling=True)
-            
+
             csv_cikti = dynamic_out_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Sonuçları CSV Olarak İndir",
                 data=csv_cikti,
-                file_name='dynamic_out.csv',
+                file_name='codigestion_out.csv',
                 mime='text/csv'
             )
-            
+
             # 2. AŞAMA: İşlem bitince Tamamlandı yazısına dönüşür
             btn_placeholder.button("Modelleme Tamamlandı ✓", disabled=True, key="btn_done")
-            
+
         except Exception as e:
             st.error(f"Simülasyon sırasında hata oluştu: {e}")
             btn_placeholder.button("Hata Oluştu", disabled=True, key="btn_error")

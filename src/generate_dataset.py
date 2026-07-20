@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-from PyADM1_2 import run_simulation
+from PyADM1_2_2 import run_simulation
 from manure_config import ADM1Simulator
 
 def generate_ml_ready_data():
@@ -37,7 +37,7 @@ def generate_ml_ready_data():
             df_influent_temp[organic_cols] = df_influent_temp[organic_cols] * load
             
             # --- RUN ADM1 SIMULATION ---
-            # This uses your PyADM1_2.py logic
+            # This uses your PyADM1_2_2.py logic (dinamik sicaklik + dinamik debi)
             results = run_simulation(df_influent_temp, df_initial_base, params)
             
             # --- FEATURE ENGINEERING ---
