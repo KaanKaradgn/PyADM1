@@ -37,7 +37,7 @@ class ADM1Simulator:
                 "name": "Şeker Pancarı Posası",
                 "desc": "Karbonhidrat (selüloz/hemiselüloz) açısından çok zengin, iyi bir ko-substrat.",
                 "kinetics": {"k_dis": 0.25, "k_hyd_ch": 0.40, "k_hyd_pr": 0.20, "k_hyd_li": 0.10},
-                "stoich": {"f_ch_xc": 0.65, "f_pr_xc": 0.10, "f_li_xc": 0.02, "f_xI_xc": 0.15, "f_sI_xc": 0.08}
+                "stoich": {"f_ch_xc": 0.75, "f_pr_xc": 0.10, "f_li_xc": 0.02, "f_xI_xc": 0.05, "f_sI_xc": 0.08}
             },
             
             "zeytin_pirinasi": {

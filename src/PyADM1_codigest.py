@@ -128,7 +128,9 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
         SI_in_total += cod * comp.get("S_I", 0.0)
 
     # Cozunmus taban influent (ortak)
-    S_IC_in = 0.008; S_IN_in = 0.002; S_anion_in = 0.0053
+    # DUZELTILDI: taban tamponlama yukseltildi (S_IC 0.008->0.05, S_cation 0->0.04 asagida);
+    # eski dusuk degerler reaktoru hafif asitlestirip metani bastiriyordu (BMP geri-testi).
+    S_IC_in = 0.05; S_IN_in = 0.01; S_anion_in = 0.0053
 
     # ---- Baslangic durumu ----
     y0 = np.zeros(N_CORE + 4 * M)
@@ -255,7 +257,7 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
         dy[I_X_h2] = qv*(0 - X_h2) + Y_h2*R12 - D_h2
         dy[I_X_I] = qv*(XI_in_total - X_I) + (f_xI*Rdis).sum()
 
-        dy[I_S_cat] = qv*(0 - S_cat)
+        dy[I_S_cat] = qv*(0.04 - S_cat)   # DUZELTILDI: feed katyon 0->0.04 (tamponlama)
         dy[I_S_ani] = qv*(S_anion_in - S_ani)
 
         # trenler
