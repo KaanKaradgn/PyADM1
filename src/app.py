@@ -246,6 +246,9 @@ with st.container():
     st.markdown('<p style="color:#8E8E93; font-size:14px; margin-bottom:12px;">Influent kompozisyonu seçilen gübre türlerinden otomatik oluşturulur — ayrı influent dosyası gerekmez. İsterseniz reaktör başlangıç durumunu (initial) yükleyebilirsiniz; boş bırakırsanız varsayılan kullanılır.</p>', unsafe_allow_html=True)
     initial_file = st.file_uploader("Reaktör Başlangıç Durumu (Initial) — opsiyonel", type=["csv"])
 
+    st.markdown('<p style="color:#8E8E93; font-size:14px; margin:16px 0 12px;">Sıcaklık ve debi profilini bir zaman-serisi CSV\'sinden yükleyin (sütunlar: <b>time</b>, sıcaklık için <b>T (C)</b>/<b>temp</b>, debi için <b>Q</b>/<b>q_ad</b>). Yüklenmezse güvenli mezofilik varsayılanlar kullanılır (37°C, HRT≈30 gün debi).</p>', unsafe_allow_html=True)
+    profile_file = st.file_uploader("Sıcaklık & Debi Profili (time, T, Q) — opsiyonel", type=["csv"])
+
 # 2. Kutu: Simülasyon Ayarları
 with st.container():
     st.markdown('<div class="glass-container-anchor"></div>', unsafe_allow_html=True)
@@ -288,6 +291,8 @@ if baslat_butonu:
         try:
             # Influent kompozisyonu kütüphaneden gelir; initial opsiyonel (yoksa varsayılan)
             df_initial = pd.read_csv(initial_file) if initial_file is not None else None
+            # Sıcaklık/debi profili opsiyonel: yüklenirse motor bu dosyadan okur
+            df_profile = pd.read_csv(profile_file) if profile_file is not None else None
 
             if sim_type == "Tek Tip":
                 mix_dict = {secilen_gubre: 100}
@@ -297,7 +302,7 @@ if baslat_butonu:
             # Ko-digestion motoru: her substrat ayrı havuz (kinetik ortalaması YOK)
             from codigest_runner import simulate_mixture
             dynamic_out_df, feedstocks, mix_name = simulate_mixture(
-                mix_dict, df_initial=df_initial, sim_days=sim_days)
+                mix_dict, df_initial=df_initial, sim_days=sim_days, df_profile=df_profile)
 
             html_kodu = get_dashboard_html(dynamic_out_df, mix_name)
             components.html(html_kodu, height=1050, scrolling=True)
