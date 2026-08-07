@@ -59,7 +59,8 @@ def _li(train):  return N_CORE + 4 * train + 3   # X_li
 
 
 def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
-                    temp_series=None, flow_series=None):
+                    temp_series=None, flow_series=None,
+                    feed_cv_comp=0.0, feed_cv_cod=0.0, seed=0):
     """
     feedstocks: liste. Her eleman:
       {
@@ -115,22 +116,37 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
 
     # ---- Influent (trenlere gore) ----
     # Beslenen gubre trenleri icin akis-agirlikli konsantrasyon; endojen tren beslenmez.
+    # Baz: her gubrenin COD yuku (_T) + komponent fraksiyonlari (_F). Salinim bunlara
+    # carpan olarak uygulanip her adimda _set_influent ile guncellenir (kompozisyon +
+    # total_cod stokastik dalgalanmasi -> gercekci hammadde degiskenligi).
+    _COMP = ["X_xc", "X_ch", "X_pr", "X_li", "X_I", "S_I"]
+    Nfeed = len(feedstocks)
+    _T = np.array([fs["total_cod"] * fs.get("flow_share", 1.0) for fs in feedstocks])
+    _F = np.array([[fs["inf_comp"].get(k, 0.0) for k in _COMP] for fs in feedstocks])
     Xxc_in = np.zeros(M); Xch_in = np.zeros(M); Xpr_in = np.zeros(M); Xli_in = np.zeros(M)
     XI_in_total = 0.0; SI_in_total = 0.0
-    for i, fs in enumerate(feedstocks):
-        cod = fs["total_cod"] * fs.get("flow_share", 1.0)
-        comp = fs["inf_comp"]
-        Xxc_in[i] = cod * comp.get("X_xc", 0.0)
-        Xch_in[i] = cod * comp.get("X_ch", 0.0)
-        Xpr_in[i] = cod * comp.get("X_pr", 0.0)
-        Xli_in[i] = cod * comp.get("X_li", 0.0)
-        XI_in_total += cod * comp.get("X_I", 0.0)
-        SI_in_total += cod * comp.get("S_I", 0.0)
+
+    def _set_influent(mcod, mfrac):
+        """mcod:(Nfeed,) total_cod carpani, mfrac:(Nfeed,6) komponent carpani."""
+        nonlocal XI_in_total, SI_in_total
+        Fi = _F * mfrac
+        ssum = Fi.sum(axis=1, keepdims=True); ssum[ssum == 0] = 1.0
+        Fi = Fi / ssum                          # oranlar kayar, toplam=1 (kompozisyon salinimi)
+        conc = (_T * mcod)[:, None] * Fi         # (Nfeed,6) etkin konsantrasyon
+        Xxc_in[:Nfeed] = conc[:, 0]; Xch_in[:Nfeed] = conc[:, 1]
+        Xpr_in[:Nfeed] = conc[:, 2]; Xli_in[:Nfeed] = conc[:, 3]
+        XI_in_total = float(conc[:, 4].sum()); SI_in_total = float(conc[:, 5].sum())
+
+    _set_influent(np.ones(Nfeed), np.ones((Nfeed, 6)))   # salinimsiz baz
 
     # Cozunmus taban influent (ortak)
-    # DUZELTILDI: taban tamponlama yukseltildi (S_IC 0.008->0.05, S_cation 0->0.04 asagida);
-    # eski dusuk degerler reaktoru hafif asitlestirip metani bastiriyordu (BMP geri-testi).
-    S_IC_in = 0.05; S_IN_in = 0.01; S_anion_in = 0.0053
+    # GUBRE-BASINA TAMPON: feed alkalinitesi (S_IC) ve katyon (S_cat) her gubrenin
+    # kendi degerinden, akis-payi agirlikli olarak gelir. Gubreler yuksek (tamponlu),
+    # asidik besinler (peynir suyu/melas/silaj) dusuk -> gercekci asitlesme/cokme.
+    _tot_share = sum(fs.get("flow_share", 1.0) for fs in feedstocks) or 1.0
+    S_IC_in  = sum(fs.get("s_ic_feed", 0.03) * fs.get("flow_share", 1.0) for fs in feedstocks) / _tot_share
+    S_cat_in = sum(fs.get("s_cat_feed", 0.02) * fs.get("flow_share", 1.0) for fs in feedstocks) / _tot_share
+    S_IN_in = 0.01; S_anion_in = 0.0053
 
     # ---- Baslangic durumu ----
     y0 = np.zeros(N_CORE + 4 * M)
@@ -257,7 +273,7 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
         dy[I_X_h2] = qv*(0 - X_h2) + Y_h2*R12 - D_h2
         dy[I_X_I] = qv*(XI_in_total - X_I) + (f_xI*Rdis).sum()
 
-        dy[I_S_cat] = qv*(0.04 - S_cat)   # DUZELTILDI: feed katyon 0->0.04 (tamponlama)
+        dy[I_S_cat] = qv*(S_cat_in - S_cat)   # gubre-basina feed katyonu (akis-payi agirlikli)
         dy[I_S_ani] = qv*(S_anion_in - S_ani)
 
         # trenler
@@ -357,10 +373,30 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
     if flow_series is None:
         flow_series = np.full(n, 178.46)
 
+    # ---- Besleme salinimi (yumusak, tohumlu): kompozisyon + total_cod ----
+    rng = np.random.default_rng(seed)
+    def _smooth_mult(cv, shape):
+        if cv <= 0:
+            return np.ones((n,) + shape)
+        node = max(1, int(round(2.0 / dt)))        # ~2 gunde bir dugum -> yumusak git-gel
+        idx = np.arange(0, n, node)
+        vals = rng.normal(0.0, cv, size=(len(idx),) + shape)
+        full = np.empty((n,) + shape)
+        for j in np.ndindex(shape):
+            full[(slice(None),) + j] = np.interp(np.arange(n), idx, vals[(slice(None),) + j])
+        return np.clip(1.0 + full, 1 - 3*cv, 1 + 3*cv)
+    cod_mult  = _smooth_mult(feed_cv_cod,  (Nfeed,))
+    frac_mult = _smooth_mult(feed_cv_comp, (Nfeed, 6))
+
     import pandas as pd
     y = y0.copy()
     rows = [y.copy()]
+    inflow = [np.zeros(6)]                          # anlik harmanlanmis influent (t=0 placeholder)
     for i in range(1, n):
+        _set_influent(cod_mult[i], frac_mult[i])    # bu adimin beslemesi (salinimli)
+        inflow.append(np.array([Xxc_in[:Nfeed].sum(), Xch_in[:Nfeed].sum(),
+                                Xpr_in[:Nfeed].sum(), Xli_in[:Nfeed].sum(),
+                                XI_in_total, SI_in_total]))
         q_ad = float(flow_series[i]); T_c = float(temp_series[i])
         sol = scipy.integrate.solve_ivp(ode, [times[i-1], times[i]], y,
                                         args=(q_ad, T_c), method="DOP853")
@@ -394,4 +430,10 @@ def run_codigestion(feedstocks, df_initial, sim_days=150.0, dt=1.0/24.0,
     out["q_gas"] = q_gas
     out["q_ch4"] = q_ch4
     out["ch4_pct"] = np.where(p_tot > 0, 100.0 * p_ch4 / p_tot, 0.0)  # metan icerigi [%]
+
+    # ---- Anlik harmanlanmis influent (miktar-tabanli feature'lar) + debi ----
+    infl = np.array(inflow)
+    for j, nm in enumerate(["in_X_xc", "in_X_ch", "in_X_pr", "in_X_li", "in_X_I", "in_S_I"]):
+        out[nm] = infl[:, j]
+    out["q_ad"] = flow_series
     return out

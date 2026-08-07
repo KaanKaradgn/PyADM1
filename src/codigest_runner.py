@@ -49,6 +49,8 @@ def build_feedstocks(mix_dict):
             "stoich": mc["stoich"],
             "inf_comp": fl["inf_comp"],
             "total_cod": fl["total_cod"],
+            "s_ic_feed": fl.get("s_ic_feed", 0.03),
+            "s_cat_feed": fl.get("s_cat_feed", 0.02),
             "flow_share": w / total,
         })
     return out
